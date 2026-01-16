@@ -1,0 +1,146 @@
+\documentclass[11pt]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[english]{babel}
+\usepackage{amsmath}
+\usepackage{graphicx}
+\usepackage{float}
+\usepackage{lipsum}
+\usepackage{multicol}
+\usepackage{xcolor}
+\usepackage{tabularx}
+\usepackage{booktabs}
+\usepackage{hyperref}
+\newcolumntype{Y}{>{\centering\arraybackslash}X}
+\usepackage[left=2.00cm, right=2.00cm, top=2.00cm, bottom=2.00cm]{geometry}
+
+\title{AN2DL Reports Template}
+
+\begin{document}
+    
+    \begin{figure}[H]
+        \raggedright
+        \includegraphics[scale=0.5]{polimi.png} \hfill \includegraphics[scale=0.3]{airlab.jpeg}
+    \end{figure}
+    
+    \vspace{5mm}
+    
+    \begin{center}
+        % Select between First and Second
+        {\Large \textbf{AN2DL - Second Challenge Report}}\\
+        \vspace{2mm}
+        % Change with your Team Name
+        {\Large \textbf{And Yet It Learns}}\\
+        \vspace{2mm}
+        % Team Members Information
+        {\large Andrea Mastroberti,}
+        {\large Kevin Pio Abate,}
+        {\large Simone Mauro,}
+        {\large Raul Agolli}\\
+        \vspace{2mm}
+        % Codabench Nicknames
+        {drebishh,}
+        {Keevin16,}
+        {SimoMauro02,}
+        {raulagolli}\\
+        \vspace{5mm}
+        January 2026
+    \end{center}    
+    \vspace{5mm}
+    
+    \begin{multicols}{2}        
+        \section{Introduction}
+        The goal of this challenge is to classify \textbf{low magnification WSIs \textit{(Whole Slide Images)}} of cancerous breast tissue in their four molecular subtypes. This is a long known challenge in histopathology \cite{JANOWCZYK201629}, however a crucial difference here is the resolution of the provided images - in the order of megabytes - against the gigabytes of uncompressed WSIs. This is particularly challenging since state of the art techniques rely on intra-cellular features such as nuclei's shape and size, chromatin texture and mitotic count, none of which is accessible at low resolution. Our approach was then to focus on texture and higher level patterns in the tissue like tumor architecture and tumor-stroma interface.
+        
+        \section{Problem Analysis}
+            \subsection{Dataset characteristics}
+            The provided dataset included 691 images for training and 477 images for test set evaluation. Notably the train set included a fair amount of anomalous images which we promptly removed, further reducing the train data down to a modest 581 images.\\
+            All images were provided with a corresponding mask which highlighted diseased tissue.
+            \subsection{Main challenges}
+            The rather small dataset as well as the resolution of the images revealed itself as a big problem, since a naive approach of training a full FEN \textit{(Feature Extraction Network)} plus classifier from scratch wouldn't be feasible.
+
+        \section{Method}
+        We followed a standard pipeline of data cleaning (removing outliers), data preprocessing (played with augmentation and stain normalization - a standard technique in histopathology \cite{Tellez_2019}, the latter without much success), and model training.
+        In particular, due to the dataset constraints, our approach has been to employ transfer learning and fine tuning to rely on feature extractors trained on millions of samples. We explored various combinations of FENs and classifiers, specifically we found great results with domain specific foundational models like Phikon\cite{filiot2024phikonv2largepublicfeature}, Virchow\cite{vorontsov2024virchowmillionslidedigitalpathology} and UNI\cite{chen2024towards-ccc} and gradient boosting machines like XGBoost and Catboost. 
+        Conversly, popular ImageNet feature extractors like resnet50 and efficientnet, as well as too simple or too complex classifiers like linear classifiers or feedforward nerual networks performed worse, likely respectively due to domain shift and over/under fitting.
+        Therefore we abandoned neural networks (which performed a few f1 percentage points worse than boosting machines with all FENs) and kept Catboost - our best performing classifier - in our experiments. 
+
+        A complication due to using such feature extractors is that they all expect 224x224 patches as input: working with gigabyte level images forces this approach so we had to solve two issues:
+        \begin{itemize}
+            \item \textbf{How to perform patching and patch selection}\\
+            To solve this, we made use of the provided masks, performed windowing with stride {224/2} over the images and discarding patches containing mask percentage below a threshold (best results were with thresh = 0.03).
+            Other approaches involving the std of pixel RGB values as patch selectors as well as ROI (Region of Interest) cropping were explored as well. We tried masking the various patches but this did not bring us to good reasults. The reason might be various but we would say that the main one is that context was relevant and the mask were probably too tight on the interested area. Sometimes they were just few pixels the interested area and were far from filling the 224 by 224 image size most backbone required us to use. We even tried a \textbf{"Tetris" like approach} where we filled in the 224 by 224 frames using masked part of the image to compose one or possible multiple patches but it was not successful.
+            \item \textbf{How to aggregate patch features}\\
+            We extracted the vectorial embedding given by the backbone of several patches extracted from the image. We tried labelling each image with the label that was given to the whole image. This did not bring us to particularly goood results. The reason was probably due to the single patch not being enough since all patches were either of low quality or could have white background. So we decided to pack all these reppresentations in one single vector. 
+            For this we tried both mean/max concatenation and Minkowski mean and found Minkowski with p = 3 to perform best - we assume due to mean/max doubling the feature space dimension leading to overfitting.
+        \end{itemize}
+
+        \section{Experiments}
+        We tried to lower variance of the models with k-fold cross validation, but also tested simple splits - all during hyperparameters optimization with optuna. These were the results of our runs 
+        \begin{table}[H]
+            \centering
+            \setlength{\tabcolsep}{3pt}
+            \caption{Performance of FENs using CatBoost Classifier, 5-fold CV}
+            \begin{tabular}{lcc} % Three columns: Model (l), k-fold F1 (c), Test Set F1 (c)
+                \toprule
+                \textbf{Model} & \textbf{k-fold F1 ($\pm$ std)} & \textbf{Test Set F1} \\
+                \midrule
+                ResNet50 & $0.3673 \pm 0.0255$ & $0.3494$ \\
+                EfficientNet & $0.3524 \pm 0.0421$ & NA \\
+                Phikon & $0.4174 \pm 0.0310$ & $0.3913$ \\
+                Virchow2 & $0.4421 \pm 0.0316$ & $0.4177$ \\
+                UNI & $0.4261 \pm 0.0315 $ & $\boldsymbol{0.4343}$ \\
+                \bottomrule
+            \end{tabular}
+            \label{tb:Measurements}
+        \end{table}
+
+        \begin{table}[H]
+            \centering
+            \setlength{\tabcolsep}{3pt}
+            \caption{Performance of FENs using CatBoost Classifier, 80/20 split}
+            \begin{tabular}{lcc} % Three columns: Model (l), k-fold F1 (c), Test Set F1 (c)
+                \toprule
+                \textbf{Model} & \hspace{0.3cm} \textbf{Validation F1} \hspace{0.3cm} & \textbf{Test Set F1} \\
+                \midrule
+                ResNet50 & $0.3988$  &  $0.3534$ \\
+                EfficientNet &  $0.3943$  & NA \\
+                Phikon & $0.4548$ & $0.4057$ \\
+                Virchow2 &  $0.4833$  & $0.4164$ \\
+                UNI & $0.5176$ & $\boldsymbol{0.4469}$ \\
+                \bottomrule
+            \end{tabular}
+            \label{tb:Measurements}
+        \end{table}
+
+        \section{Results}
+        Our experiments demonstrated that leveraging domain-specific foundation models significantly outperforms standard ImageNet-pretrained networks. The \textbf{UNI} feature extractor combined with the \textbf{CatBoost} classifier achieved our highest performance.
+        \\\\
+        While standard architectures like ResNet50 and EfficientNet struggled to capture the necessary histological features from the low-resolution inputs (F1 scores of 0.3494 and NA respectively), the pathology-specific models (Phikon, UNI) showed marked improvements. Specifically, the UNI model provided the most robust feature representations.
+        \\\\
+        Through extensive hyperparameter optimization using \textbf{Optuna} (100 trials) and the application of \textbf{Test Time Augmentation (TTA)}, we further refined our best model. The final configuration, employing UNI features aggregated via Minkowski mean ($p=3$) and classified by CatBoost, achieved a \textbf{Test Set F1-score of 0.4469}. This result represents our key achievement and a significant improvement over the baseline linear classifiers and neural networks we initially tested.
+        
+        \section{Discussion}
+        The primary strength of our approach lies in the utilization of the \textbf{UNI} foundation model \cite{chen2024towards-ccc}. Unlike ResNet50, which is trained on natural images, UNI is pre-trained on over 100 million pathology patches. This domain-specific pre-training allowed our model to recognize complex tissue structures (tumor architecture, stroma interface) even at the challenged resolution of the provided dataset.
+        \\\\
+        Furthermore, the decision to use \textbf{CatBoost} over deep neural network classifiers proved crucial. Given the small size of the training set (581 usable images after cleaning), deep classifiers tended to overfit quickly. Gradient boosting machines, particularly CatBoost, demonstrated superior regularization and handled the aggregated feature vectors more effectively. We suppose Catboost performed better than XGboost due to the native resistance to overfitting and the fact it is better suited for dealing with categorical data like our case.
+        \\\\
+        The fact that we were able to push even very simple model like logistic regression up to 0.4 approximately on the test set is a proof that the backbone did a very good job and the model would highly benefit from more data. Augmentation helped but not as we had expected so we believe that the backbone we used was already well trained to produce similar results even if the image gets augmented. 
+    
+        \subsection{Limitations and Unexpected Outcomes}
+        While our smart tiling strategy (filtering patches with $<3\%$ tissue content) reduced noise, the aggregation of patch features into a single vector (via Minkowski mean) inherently leads to a loss of spatial information. This bottleneck likely limited the classifier's ability to fully leverage local tumor heterogeneity.
+
+        \section{Conclusions}
+        In this work, we addressed the challenge of classifying low-magnification breast cancer WSIs by proposing a pipeline that integrates state-of-the-art pathology foundation models with robust gradient boosting classifiers.
+        \\\\
+        \textbf{Main Contributions:}
+        \begin{itemize}
+            \item We demonstrated that \textbf{UNI} significantly outperforms general-purpose vision models (ResNet/EfficientNet) and other pathology models (Virchow2) for this specific task.
+            \item We established that for small, high-dimensional datasets, a \textbf{CatBoost} classifier on top of frozen embeddings outperforms end-to-end neural network training.
+            \item We achieved a competitive F1-score of \textbf{0.4469} through rigorous data cleaning and hyperparameter tuning with Optuna.
+        \end{itemize}
+
+        \bibliography{references}
+        \bibliographystyle{abbrv}
+    
+    \end{multicols}
+\end{document}

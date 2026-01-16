@@ -20,7 +20,7 @@ We developed a robust pipeline prioritizing feature engineering and hybrid archi
 
 **🏆 Result:** 0.92 Weighted F1-Score.
 
-📄 **[View Technical Report](./FirstChallenge/report/AN2DL___theoverfitters-1.pdf)**
+📄 **[View Technical Report](./FirstChallenge/report/theoverfitters-report.pdf)**
 
 ---
 
@@ -37,7 +37,7 @@ We implemented a transfer learning pipeline leveraging domain-specific foundatio
 
 **🏆 Result:** 0.4469 Test F1-Score (representing a significant improvement over baseline models).
 
-📄 **[View Technical Report](./SecondChallenge/report/challenge2_andyetitlearns.pdf)**
+📄 **[View Technical Report](./SecondChallenge/report/andyetitlearns-report.pdf)**
 
 ---
 
@@ -53,8 +53,9 @@ We implemented a transfer learning pipeline leveraging domain-specific foundatio
 
 ---
 
-### Authors
-* **Raul Agolli**
-* **Kevin Pio Abate**
-* **Andrea Ascenzo Mastroberti**
-* **Simone Mauro** (Challenge 2)
+### Team
+Both challenges were team work. Thanks to my teammates:
+* **Challenge 1** (team *theoverfitters*): Raul Agolli, Kevin Pio Abate, Andrea Ascenzo Mastroberti
+* **Challenge 2** (team *And Yet It Learns*): Raul Agolli, Kevin Pio Abate, Andrea Ascenzo Mastroberti, Simone Mauro
+
+The commit history keeps everyone's original authorship. The LaTeX sources of both reports are in `*/report/latex/`.
